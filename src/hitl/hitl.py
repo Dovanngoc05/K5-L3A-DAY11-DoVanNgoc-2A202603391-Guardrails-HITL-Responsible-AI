@@ -67,32 +67,45 @@ class ConfidenceRouter:
         Returns:
             RoutingDecision with routing action and metadata
         """
-        # Optional: Implement routing logic
-        #
-        # 1. Check if action_type is in HIGH_RISK_ACTIONS
-        #    -> If yes: always escalate (action="escalate", priority="high",
-        #       requires_human=True, reason="High-risk action: {action_type}")
-        #
-        # 2. Check confidence thresholds:
-        #    - confidence >= 0.9:
-        #      action="auto_send", priority="low",
-        #      requires_human=False, reason="High confidence"
-        #
-        #    - 0.7 <= confidence < 0.9:
-        #      action="queue_review", priority="normal",
-        #      requires_human=True, reason="Medium confidence — needs review"
-        #
-        #    - confidence < 0.7:
-        #      action="escalate", priority="high",
-        #      requires_human=True, reason="Low confidence — escalating"
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError("confidence must be between 0.0 and 1.0")
+
+        normalized_action = action_type.strip().lower()
+        high_risk_actions = {action.lower() for action in HIGH_RISK_ACTIONS}
+        if normalized_action in high_risk_actions:
+            return RoutingDecision(
+                action="escalate",
+                confidence=confidence,
+                reason=f"High-risk action: {normalized_action}",
+                priority="high",
+                requires_human=True,
+            )
+
+        if confidence >= self.HIGH_THRESHOLD:
+            return RoutingDecision(
+                action="auto_send",
+                confidence=confidence,
+                reason="High confidence",
+                priority="low",
+                requires_human=False,
+            )
+
+        if confidence >= self.MEDIUM_THRESHOLD:
+            return RoutingDecision(
+                action="queue_review",
+                confidence=confidence,
+                reason="Medium confidence — needs review",
+                priority="normal",
+                requires_human=True,
+            )
 
         return RoutingDecision(
-            action="auto_send",
+            action="escalate",
             confidence=confidence,
-            reason="TODO: implement routing logic",
-            priority="low",
-            requires_human=False,
-        )  # TODO: Replace with implementation
+            reason="Low confidence — escalating",
+            priority="high",
+            requires_human=True,
+        )
 
 
 # ============================================================
@@ -115,33 +128,33 @@ class ConfidenceRouter:
 hitl_decision_points = [
     {
         "id": 1,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "High-value transfer approval",
+        "trigger": "A transfer exceeds the configured review threshold, uses a new beneficiary, or has a fraud signal.",
+        "hitl_model": "human-in-the-loop",
+        "context_needed": "Verified customer identity, amount, source account, masked destination, beneficiary age, risk signals, and policy checks.",
+        "example": "A customer requests a large transfer to a beneficiary added moments ago.",
+        "approval_path": "Hold the transfer pending review; approve only after required identity checks, reject on suspected fraud, and deny on timeout.",
+        "audit_fields": "correlation_id, customer_id, intent, amount, masked_source, masked_destination, risk_signals, reviewer_id, decision, reason, timestamp",
     },
     {
         "id": 2,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Account security and profile changes",
+        "trigger": "A request changes credentials, recovery methods, contact details, or other security-sensitive account data.",
+        "hitl_model": "human-in-the-loop",
+        "context_needed": "Authentication result, requested field and masked before/after values, recent device and session signals, and relevant account history.",
+        "example": "A customer asks to replace the account recovery phone number from a newly registered device.",
+        "approval_path": "Pause the change until step-up verification and reviewer approval; reject failed verification or suspicious requests; deny if review times out.",
+        "audit_fields": "correlation_id, customer_id, intent, changed_field, masked_before, masked_after, device_id, verification_result, reviewer_id, decision, timestamp",
     },
     {
         "id": 3,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Fraud alert and disputed transaction review",
+        "trigger": "The system flags a transaction or the customer disputes a charge, but available evidence does not support a confident automated decision.",
+        "hitl_model": "human-as-tiebreaker",
+        "context_needed": "Transaction metadata, customer dispute, relevant account activity, fraud indicators, and evidence supporting or contradicting the alert.",
+        "example": "A card payment is flagged as unusual, while the customer reports that they may have made the purchase.",
+        "approval_path": "Keep the case open for a reviewer; record whether to clear, investigate, or block the transaction; send the customer a status update; escalate unresolved cases.",
+        "audit_fields": "correlation_id, customer_id, transaction_id, intent, fraud_signals, evidence_refs, reviewer_id, decision, reason, customer_notification, timestamp",
     },
 ]
 

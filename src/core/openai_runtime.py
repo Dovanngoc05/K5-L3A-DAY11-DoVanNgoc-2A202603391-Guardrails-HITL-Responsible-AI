@@ -42,6 +42,7 @@ class OpenAIRunner:
     plugins: list = field(default_factory=list)
     provider: str = "openai"
     temperature: float = 0.4
+    max_tokens: int | None = None
     client_kwargs: dict = field(default_factory=dict)
     input_hooks: list[Callable[[str], str | None]] = field(default_factory=list)
     output_hooks: list[Callable[[str], str]] = field(default_factory=list)
@@ -62,6 +63,10 @@ class OpenAIRunner:
             return block_msg
 
         client = self._client()
+        request_options = {}
+        if self.max_tokens is not None:
+            request_options["max_tokens"] = self.max_tokens
+
         completion = client.chat.completions.create(
             model=self.model,
             messages=[
@@ -69,6 +74,7 @@ class OpenAIRunner:
                 {"role": "user", "content": user_message},
             ],
             temperature=self.temperature,
+            **request_options,
         )
         text = (completion.choices[0].message.content or "").strip()
 
@@ -162,6 +168,7 @@ def _make_pair(
     model: str,
     provider: str,
     client_kwargs: dict,
+    max_tokens: int | None = None,
     plugins: list | None = None,
     input_hooks: list | None = None,
     output_hooks: list | None = None,
@@ -173,6 +180,7 @@ def _make_pair(
         model=model,
         provider=provider,
         client_kwargs=client_kwargs,
+        max_tokens=max_tokens,
         plugins=list(plugins or []),
         input_hooks=list(input_hooks or []),
         output_hooks=list(output_hooks or []),
@@ -216,6 +224,7 @@ def create_openai_pair(
     output_hooks: list | None = None,
     temperature: float = 0.4,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> tuple[OpenAIAgent, OpenAIRunner]:
     """Red Team OpenAI path (default = soft model; advance may pass harder)."""
     return _make_pair(
@@ -225,6 +234,11 @@ def create_openai_pair(
         model=model or get_red_model(),
         provider=get_red_provider(),
         client_kwargs=red_openai_client_kwargs(),
+        max_tokens=(
+            max_tokens
+            if max_tokens is not None
+            else (8192 if get_red_provider() == "openrouter" else None)
+        ),
         plugins=plugins,
         input_hooks=input_hooks,
         output_hooks=output_hooks,
